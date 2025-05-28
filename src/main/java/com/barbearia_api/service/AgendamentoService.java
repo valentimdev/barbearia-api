@@ -23,17 +23,17 @@ import java.util.stream.Collectors;
 public class AgendamentoService {
     private final AgendamentoRepository agendamentoRepository;
     private final FuncionarioRepository funcionarioRepository;
+    private final UsuarioRepository usuarioRepository; // Adicionado ao construtor
     private final AgendamentoServicoService agendamentoServicoService;
 
 
-
+    // Construtor atualizado para incluir UsuarioRepository se não estava antes,
+    // ou mantenha o seu construtor original se já o injetava corretamente.
     @Autowired
-    private UsuarioRepository usuarioRepository;
-
     public AgendamentoService(
             AgendamentoRepository agendamentoRepository,
             FuncionarioRepository funcionarioRepository,
-            UsuarioRepository usuarioRepository,
+            UsuarioRepository usuarioRepository, // Garanta que está sendo injetado
             AgendamentoServicoService agendamentoServicoService
     ) {
         this.agendamentoRepository = agendamentoRepository;
@@ -52,18 +52,15 @@ public class AgendamentoService {
     public AgendamentoVmGeral listById(Integer id) {
         return agendamentoRepository.findById(id)
                 .map(this::toVm)
-                .orElse(null);
+                .orElse(null); // Considere lançar uma exceção se não encontrado
     }
 
     public List<AgendamentoVmGeral> listByUsuarioId(Integer id) {
         return agendamentoRepository.findByUsuarioId(id).stream()
                 .map(agendamento -> {
                     AgendamentoVmGeral vm = toVm(agendamento);
-
-                    // Busca os serviços vinculados a esse agendamento
                     List<ServicoVmGeral> servicos = agendamentoServicoService.listarPorAgendamento(agendamento.getId());
                     vm.setServicos(servicos);
-
                     return vm;
                 })
                 .collect(Collectors.toList());
@@ -83,7 +80,13 @@ public class AgendamentoService {
     }
 
     public AgendamentoVmGeral register(AgendamentoRegisterDto agendamentoRegisterDto) {
-        Usuario usuario = (Usuario) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        // Obtém o usuário logado
+        Usuario usuarioAuth = (Usuario) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        // É uma boa prática buscar o usuário do repositório para garantir que é uma entidade gerenciada
+        // e atualizada, especialmente se o objeto 'principal' for uma projeção ou DTO.
+        // Se 'usuarioAuth' já é a entidade completa e gerenciada, pode usar usuarioAuth.getId() diretamente.
+        Usuario usuario = usuarioRepository.findById(usuarioAuth.getId())
+                .orElseThrow(() -> new RuntimeException("Usuário autenticado não encontrado no banco de dados."));
         Integer usuarioId = usuario.getId();
 
 
@@ -99,40 +102,41 @@ public class AgendamentoService {
             throw new RuntimeException("Horário fora do expediente do funcionário.");
         }
 
-
-        boolean existeConflito = agendamentoRepository.existsByFuncionarioIdAndDataAgendamentoAndHorario(
+        // --- VERIFICAÇÃO DE CONFLITO ATUALIZADA ---
+        boolean existeConflito = agendamentoRepository.existsActiveByFuncionarioIdAndDataAgendamentoAndHorario(
                 agendamentoRegisterDto.getFuncionarioId(),
                 agendamentoRegisterDto.getDataAgendamento(),
                 agendamentoRegisterDto.getHorario()
         );
 
         if (existeConflito) {
-            throw new RuntimeException("Já existe um agendamento nesse horário para esse funcionário.");
+            // Mensagem pode ser mais específica ou mantida genérica para o frontend tratar
+            throw new RuntimeException("Horário indisponível. Já existe um agendamento ativo neste horário para o funcionário.");
         }
 
-
+        // Geração do CRC
         String crc = "f" + agendamentoRegisterDto.getFuncionarioId() +
                 "-h" + agendamentoRegisterDto.getHorario() +
                 "-d" + agendamentoRegisterDto.getDataAgendamento();
 
         Agendamento agendamento = new Agendamento(
-                null,
+                null, // ID será gerado automaticamente
                 agendamentoRegisterDto.getFuncionarioId(),
                 usuarioId,
                 agendamentoRegisterDto.getHorario(),
                 agendamentoRegisterDto.getDataAgendamento(),
-                Agendamento.StatusAgendamento.ESPERA,
+                Agendamento.StatusAgendamento.ESPERA, // Status padrão para novo agendamento
                 crc
         );
 
         agendamento = agendamentoRepository.save(agendamento);
 
-        // 📤 Retorna o ViewModel do agendamento salvo
         return toVm(agendamento);
     }
 
 
     public AgendamentoVmGeral update(AgendamentoEditDto agendamentoEditDto) {
+        // Validações adicionais podem ser necessárias aqui, como verificar se o novo horário não conflita.
         String crc = "f" + agendamentoEditDto.getFuncionarioId() +
                 "-h" + agendamentoEditDto.getHorario() +
                 "-d" + agendamentoEditDto.getDataAgendamento();
@@ -140,10 +144,14 @@ public class AgendamentoService {
         Agendamento agendamento = agendamentoRepository.findById(agendamentoEditDto.getId())
                 .orElseThrow(() -> new RuntimeException("Agendamento não encontrado com o ID: " + agendamentoEditDto.getId()));
 
+        // Adicionar lógica para verificar conflito se o horário/data/funcionario mudar.
+        // Se (houve mudança em funcionário, data ou horário) E (novo slot está ocupado por OUTRO agendamento)
+        // Então lançar exceção.
+
         agendamento.setFuncionarioId(agendamentoEditDto.getFuncionarioId());
         agendamento.setHorario(agendamentoEditDto.getHorario());
         agendamento.setDataAgendamento(agendamentoEditDto.getDataAgendamento());
-        agendamento.setCrc(crc);
+        agendamento.setCrc(crc); // CRC deve ser atualizado se os componentes mudarem
 
         return toVm(agendamentoRepository.save(agendamento));
     }
@@ -157,12 +165,18 @@ public class AgendamentoService {
         return toVm(agendamentoRepository.save(agendamento));
     }
 
-    // ✅ Conversor centralizado para AgendamentoVmGeral com dados do usuário
     private AgendamentoVmGeral toVm(Agendamento agendamento) {
+        // A injeção de UsuarioRepository no construtor é importante para esta linha.
         Usuario usuario = usuarioRepository.findById(agendamento.getUsuarioId())
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário associado ao agendamento não encontrado: ID " + agendamento.getUsuarioId()));
 
-        return new AgendamentoVmGeral(
+        Funcionario funcionario = funcionarioRepository.findById(agendamento.getFuncionarioId())
+                .orElseThrow(() -> new RuntimeException("Funcionário associado ao agendamento não encontrado: ID " + agendamento.getFuncionarioId()));
+
+        // Você pode querer adicionar o nome do funcionário ao ViewModel também
+        // String nomeFuncionario = funcionario.getUsuario().getNome(); // Supondo que Funcionario tem relação com Usuario
+
+        AgendamentoVmGeral vm = new AgendamentoVmGeral(
                 agendamento.getId(),
                 agendamento.getFuncionarioId(),
                 agendamento.getUsuarioId(),
@@ -170,9 +184,16 @@ public class AgendamentoService {
                 agendamento.getDataAgendamento(),
                 agendamento.getStatusAgendamento(),
                 agendamento.getCrc(),
-                usuario.getNome(),
-                usuario.getEmail(),
-                usuario.getTelefone()
+                usuario.getNome(),    // Nome do cliente
+                usuario.getEmail(),   // Email do cliente
+                usuario.getTelefone() // Telefone do cliente
         );
+
+        // Adicionar serviços ao ViewModel, se necessário aqui também, ou garantir que
+        // os métodos de listagem que precisam deles os preencham.
+        // List<ServicoVmGeral> servicos = agendamentoServicoService.listarPorAgendamento(agendamento.getId());
+        // vm.setServicos(servicos);
+
+        return vm;
     }
 }

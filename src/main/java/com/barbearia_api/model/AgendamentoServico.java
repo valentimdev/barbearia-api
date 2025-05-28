@@ -56,4 +56,5 @@ public class AgendamentoServico {
     public String getDescricao() {
         return servico != null ? servico.getDescricao() : null;
     }
+
 }
