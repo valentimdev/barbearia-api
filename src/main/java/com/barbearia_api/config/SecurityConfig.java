@@ -4,7 +4,7 @@ import com.barbearia_api.filter.JwtFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod; // ***** CERTIFIQUE-SE DE IMPORTAR HttpMethod *****
+import org.springframework.http.HttpMethod; // Certifique-se de que este import está presente
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -19,7 +19,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays; // Pode usar Arrays.asList ou List.of
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -35,9 +35,9 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        // ***** LINHA CRÍTICA ADICIONADA/MODIFICADA *****
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/auth/login", "/usuario/register").permitAll()
+                        // ***** LINHA MODIFICADA PARA INCLUIR O ENDPOINT DE HASH *****
+                        .requestMatchers("/auth/login", "/usuario/register", "/auth/util/hash-password").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess
@@ -59,11 +59,9 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Garanta que esta é a origem EXATA do seu frontend
-        configuration.setAllowedOrigins(List.of("http://localhost:5173")); // Ou Arrays.asList("http://localhost:5173")
-        // Seja explícito ou use "*" para métodos e cabeçalhos se necessário durante o teste
+        configuration.setAllowedOrigins(List.of("http://localhost:5173"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        configuration.setAllowedHeaders(List.of("*")); // Ou Arrays.asList("*")
+        configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
