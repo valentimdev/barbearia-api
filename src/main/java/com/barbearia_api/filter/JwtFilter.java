@@ -2,6 +2,8 @@ package com.barbearia_api.filter;
 
 import com.barbearia_api.service.UsuarioService;
 import com.barbearia_api.util.JwtUtil;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,19 +33,26 @@ public class JwtFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
+        String token = null;
+        String email = null;
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
-            String email = jwtUtil.getEmailFromToken(token);
-
-            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails usuario = usuarioService.loadUserByUsername(email);
-                if (jwtUtil.validateToken(token)) {
-                    UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                            usuario, null, usuario.getAuthorities());
-                    SecurityContextHolder.getContext().setAuthentication(auth);
-                }
+            token = authHeader.substring(7);
+            try {
+                email = jwtUtil.getEmailFromToken(token);
+            } catch (ExpiredJwtException e) {
+                System.out.println("JWT Filter: Token JWT expirado - " + e.getMessage());
+            } catch (JwtException e) {
+                System.out.println("JWT Filter: Token JWT inválido ("+ e.getClass().getSimpleName() +") - " + e.getMessage());
             }
+        }
+
+        if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            UserDetails userDetails = usuarioService.loadUserByUsername(email);
+
+            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                    userDetails, null, userDetails.getAuthorities());
+            SecurityContextHolder.getContext().setAuthentication(authentication);
         }
 
         filterChain.doFilter(request, response);
