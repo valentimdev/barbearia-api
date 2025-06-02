@@ -54,6 +54,23 @@ public class AgendamentoController {
         return ResponseEntity.ok(agendamentoService.listByHorarioAndData(horario, dataAgendamento));
     }
 
+    @GetMapping("/list/por-funcionario-data-hora")
+    public ResponseEntity<List<AgendamentoVmGeral>> listByFuncionarioDataHora(
+            @RequestParam Integer funcionarioId,
+            @RequestParam String data, // Espera-se "yyyy-MM-dd" do cliente/frontend
+            @RequestParam String hora) { // Espera-se "HH:mm"
+
+        // Validações básicas de formato podem ser adicionadas aqui se desejar,
+        // ou delegar para o Service. Exemplo simples:
+        if (funcionarioId == null || data == null || hora == null || data.isEmpty() || hora.isEmpty()) {
+            // Poderia retornar HttpStatus.BAD_REQUEST com uma mensagem
+            // Mas por simplicidade, o service tratará o parse da data.
+        }
+
+        List<AgendamentoVmGeral> agendamentos = agendamentoService.listByFuncionarioIdAndDataAndHorario(funcionarioId, data, hora);
+        return ResponseEntity.ok(agendamentos);
+    }
+
 
     @PostMapping("/register")
     public ResponseEntity<AgendamentoVmGeral> register(@Valid @RequestBody AgendamentoRegisterDto agendamentoRegisterDto){

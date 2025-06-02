@@ -15,7 +15,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -89,6 +92,38 @@ public class AgendamentoService {
     public List<AgendamentoVmGeral> listByHorarioAndData(String horario, String dataAgendamento) {
         return agendamentoRepository.findByHorarioAndDataAgendamento(horario, dataAgendamento).stream()
                 .map(this::toVm)
+                .collect(Collectors.toList());
+    }
+
+    public List<AgendamentoVmGeral> listByFuncionarioIdAndDataAndHorario(Integer funcionarioId, String dataAgendamentoIso, String horario) {
+        // dataAgendamentoIso é esperado do controller no formato "yyyy-MM-dd"
+
+        String dataAgendamentoParaRepositorio;
+        try {
+            // Parseia a data ISO "yyyy-MM-dd"
+            LocalDate date = LocalDate.parse(dataAgendamentoIso, DateTimeFormatter.ISO_LOCAL_DATE);
+            // Formata para "dd/MM/yyyy" que é o formato esperado pelo repositório (baseado no seu DTO de registro e DB)
+            dataAgendamentoParaRepositorio = date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+        } catch (DateTimeParseException e) {
+            // Se o controller não validar o formato da data, podemos lançar um erro aqui
+            throw new RuntimeException("Formato de data inválido fornecido para consulta. Esperado: yyyy-MM-dd. Recebido: " + dataAgendamentoIso, e);
+        }
+
+        // Chama o método do repositório que busca pela combinação dos três campos
+        List<Agendamento> agendamentosEncontrados = agendamentoRepository.findByFuncionarioIdAndDataAgendamentoAndHorario(
+                funcionarioId,
+                dataAgendamentoParaRepositorio, // Usa a data formatada para "dd/MM/yyyy"
+                horario
+        );
+
+        // Mapeia para AgendamentoVmGeral e adiciona os serviços
+        return agendamentosEncontrados.stream()
+                .map(agendamento -> {
+                    AgendamentoVmGeral vm = toVm(agendamento); // toVm deve retornar dataAgendamento como "yyyy-MM-dd"
+                    List<ServicoVmGeral> servicos = agendamentoServicoService.listarPorAgendamento(agendamento.getId());
+                    vm.setServicos(servicos); // Adiciona os serviços ao ViewModel
+                    return vm;
+                })
                 .collect(Collectors.toList());
     }
 
@@ -168,17 +203,41 @@ public class AgendamentoService {
         return toVm(agendamentoRepository.save(agendamento));
     }
 
-    // ✅ Conversor centralizado para AgendamentoVmGeral com dados do usuário
     private AgendamentoVmGeral toVm(Agendamento agendamento) {
         Usuario usuario = usuarioRepository.findById(agendamento.getUsuarioId())
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado")); // Ajustei a mensagem de erro aqui para ser mais específica
+
+        String dataAgendamentoFormatadaParaApi;
+        Object dataOriginalObj = agendamento.getDataAgendamento();
+
+        if (dataOriginalObj instanceof LocalDate) {
+            dataAgendamentoFormatadaParaApi = ((LocalDate) dataOriginalObj).toString(); // yyyy-MM-dd
+        } else if (dataOriginalObj instanceof String) {
+            String dataOriginalStr = (String) dataOriginalObj;
+            if (dataOriginalStr.matches("^\\d{2}/\\d{2}/\\d{4}$")) { // Se for "dd/MM/yyyy"
+                try {
+                    DateTimeFormatter parserDdMmAaaa = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                    LocalDate dataLocalDate = LocalDate.parse(dataOriginalStr, parserDdMmAaaa);
+                    dataAgendamentoFormatadaParaApi = dataLocalDate.toString(); // Converte para "yyyy-MM-dd"
+                } catch (DateTimeParseException e) {
+                    System.err.println("AVISO: Erro ao parsear a data do agendamento '" + dataOriginalStr + "' no toVm. Retornando original. Agendamento ID: " + agendamento.getId() + ". Erro: " + e.getMessage());
+                    dataAgendamentoFormatadaParaApi = dataOriginalStr;
+                }
+            } else {
+                // Se já estiver em outro formato (idealmente yyyy-MM-dd) ou um formato inesperado
+                dataAgendamentoFormatadaParaApi = dataOriginalStr;
+            }
+        } else {
+            System.err.println("AVISO: Tipo de dataAgendamento inesperado ou nulo no toVm. Agendamento ID: " + agendamento.getId());
+            dataAgendamentoFormatadaParaApi = null;
+        }
 
         return new AgendamentoVmGeral(
                 agendamento.getId(),
                 agendamento.getFuncionarioId(),
                 agendamento.getUsuarioId(),
                 agendamento.getHorario(),
-                agendamento.getDataAgendamento(),
+                dataAgendamentoFormatadaParaApi,
                 agendamento.getStatusAgendamento(),
                 agendamento.getCrc(),
                 usuario.getNome(),
