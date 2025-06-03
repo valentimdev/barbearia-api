@@ -1,8 +1,7 @@
 package com.barbearia_api.viewmodel;
 
-import com.barbearia_api.viewmodel.ServicoVmGeral;
-import com.barbearia_api.model.Agendamento.StatusAgendamento;
-
+import com.barbearia_api.model.Agendamento.StatusAgendamento; // Corrigido para o caminho completo
+import java.util.ArrayList; // Importação adicionada
 import java.util.List;
 
 public class AgendamentoVmGeral {
@@ -19,9 +18,12 @@ public class AgendamentoVmGeral {
     private String emailUsuario;
     private String telefoneUsuario;
 
-    private List<ServicoVmGeral> servicos;
+    // Melhoria: Inicializar a lista para evitar NullPointerException
+    private List<ServicoVmGeral> servicos = new ArrayList<>();
 
-    public AgendamentoVmGeral() {}
+    public AgendamentoVmGeral() {
+        // O construtor padrão agora implicitamente tem 'servicos' inicializado como uma lista vazia.
+    }
 
     public AgendamentoVmGeral(Integer id, Integer funcionarioId, Integer usuarioId, String horario, String dataAgendamento,
                               StatusAgendamento statusAgendamento, String crc,
@@ -36,9 +38,12 @@ public class AgendamentoVmGeral {
         this.nomeUsuario = nomeUsuario;
         this.emailUsuario = emailUsuario;
         this.telefoneUsuario = telefoneUsuario;
+        // 'servicos' já está inicializado como new ArrayList<>() pela declaração do campo.
+        // Se você quisesse permitir que este construtor também definisse os serviços,
+        // você adicionaria 'List<ServicoVmGeral> servicos' como parâmetro e o atribuiria aqui.
     }
 
-    // ✅ Getters e Setters
+    // Getters e Setters (permanecem os mesmos)
 
     public Integer getId() { return id; }
     public void setId(Integer id) { this.id = id; }
@@ -71,5 +76,10 @@ public class AgendamentoVmGeral {
     public void setTelefoneUsuario(String telefoneUsuario) { this.telefoneUsuario = telefoneUsuario; }
 
     public List<ServicoVmGeral> getServicos() { return servicos; }
-    public void setServicos(List<ServicoVmGeral> servicos) { this.servicos = servicos; }
+    public void setServicos(List<ServicoVmGeral> servicos) {
+        // Você pode adicionar uma verificação aqui se quiser garantir que nunca seja setado para null
+        // Ex: this.servicos = (servicos != null) ? servicos : new ArrayList<>();
+        // Mas geralmente, se alguém está setando, espera-se que forneça uma lista válida ou uma nova lista vazia.
+        this.servicos = servicos;
+    }
 }
